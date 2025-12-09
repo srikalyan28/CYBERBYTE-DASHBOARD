@@ -34,6 +34,9 @@
   <button class="start" onclick="control('start')">Start</button>
   <button class="stop" onclick="control('stop')">Stop</button>
   <button class="restart" onclick="control('restart')">Restart</button>
+  <p id="status">Status: Checking...</p>
+<button onclick="checkStatus()">Refresh Status</button>
+
 
   <p id="status">Status: waiting…</p>
 
@@ -57,5 +60,15 @@
       }
     }
   </script>
+
+<script>
+async function checkStatus() {
+    const response = await fetch(`${API_BASE}/bots/status/cyberbot`);
+    const data = await response.json();
+    document.getElementById("status").innerText = "Status: " + data.status.toUpperCase();
+}
+</script>
+
+
 </body>
 </html>
