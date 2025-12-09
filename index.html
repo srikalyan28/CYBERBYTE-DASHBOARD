@@ -63,11 +63,25 @@
 
 <script>
 async function checkStatus() {
-    const response = await fetch(`${API_BASE}/bots/status/cyberbot`);
-    const data = await response.json();
-    document.getElementById("status").innerText = "Status: " + data.status.toUpperCase();
+    document.getElementById("status").innerText = "Status: Checking...";
+
+    try {
+        const response = await fetch(`${API_BASE}/bots/status/cyberbot`, {
+            method: "GET"
+        });
+
+        const data = await response.json();
+
+        document.getElementById("status").innerText =
+            "Status: " + data.status.toUpperCase();
+
+    } catch (err) {
+        document.getElementById("status").innerText =
+            "Status: ERROR (Cannot reach API)";
+    }
 }
 </script>
+
 
 
 </body>
