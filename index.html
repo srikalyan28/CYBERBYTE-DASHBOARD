@@ -1,88 +1,344 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Cyber Byte Hosting Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background: #020617;
-      color: #e5e7eb;
-      text-align: center;
-      padding-top: 60px;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #0f172a 0, #020617 45%, #000 100%);
     }
-    h1 { margin-bottom: 6px; }
-    h2 { color: #9ca3af; margin-bottom: 24px; }
-    button {
-      padding: 10px 18px;
-      margin: 6px;
-      border-radius: 6px;
-      border: none;
-      font-size: 15px;
-      cursor: pointer;
+    .card {
+      background: radial-gradient(circle at top left, rgba(34,211,238,0.15), rgba(15,23,42,0.97));
+      border: 1px solid rgba(56,189,248,0.35);
+      box-shadow:
+        0 0 30px rgba(15,23,42,0.9),
+        0 0 50px rgba(56,189,248,0.25);
     }
-    .start { background: #16a34a; color: white; }
-    .stop { background: #dc2626; color: white; }
-    .restart { background: #eab308; color: #111827; }
-    #status { margin-top: 20px; font-size: 16px; }
+    .glow-title {
+      text-shadow: 0 0 10px rgba(56,189,248,0.9);
+    }
+    .btn {
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.15s ease;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(15,23,42,0.8);
+    }
+    .spin {
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
   </style>
 </head>
-<body>
-  <h1>🚀 Cyber Byte Panel</h1>
-  <h2>Bot: <strong>cyberbot</strong></h2>
 
-  <button class="start" onclick="control('start')">Start</button>
-  <button class="stop" onclick="control('stop')">Stop</button>
-  <button class="restart" onclick="control('restart')">Restart</button>
-  <p id="status">Status: Checking...</p>
-<button onclick="checkStatus()">Refresh Status</button>
+<body class="text-slate-100">
+  <div class="max-w-6xl mx-auto px-4 py-8 sm:py-10">
+    <!-- HEADER -->
+    <header class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between mb-10">
+      <div class="flex items-center gap-4">
+        <img
+          src="logo.png"
+          alt="Cyber Byte Logo"
+          class="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_0_25px_rgba(56,189,248,0.7)]"
+        />
+        <div>
+          <h1 class="text-3xl sm:text-4xl font-extrabold tracking-wide glow-title">
+            CYBER BYTE
+          </h1>
+          <p class="text-sky-300/80 text-sm sm:text-base">
+            Discord Bot Hosting Control Panel
+          </p>
+        </div>
+      </div>
 
+      <div class="flex flex-col items-start sm:items-end gap-2">
+        <span
+          id="apiStatus"
+          class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-sky-500/60 text-xs text-sky-300"
+        >
+          <span class="w-2 h-2 rounded-full bg-yellow-400"></span>
+          Checking API…
+        </span>
 
-  <p id="status">Status: waiting…</p>
+        <button
+          id="refreshAllBtn"
+          class="btn inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs sm:text-sm font-medium"
+        >
+          <span id="refreshAllIcon">⟳</span>
+          Refresh all
+        </button>
+      </div>
+    </header>
+
+    <!-- BOTS GRID -->
+    <main id="botsContainer" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <!-- Cards will be injected here -->
+    </main>
+
+    <footer class="mt-10 text-center text-[11px] text-slate-500/80">
+      Cyber Byte · FastAPI · PM2 · ngrok
+    </footer>
+  </div>
 
   <script>
-    // For now, backend runs on your Ubuntu: http://localhost:8000
+    // 🔧 CHANGE THIS WHEN YOUR NGROK URL CHANGES
     const API_BASE = "https://burl-birdlike-verda.ngrok-free.dev";
 
-    async function control(action) {
-      try {
-        const res = await fetch(`${API_BASE}/bots/${action}/cyberbot`, {
-          method: "POST",
+    const botsContainer = document.getElementById("botsContainer");
+    const apiStatus = document.getElementById("apiStatus");
+    const refreshAllBtn = document.getElementById("refreshAllBtn");
+    const refreshAllIcon = document.getElementById("refreshAllIcon");
+
+    let botNames = []; // list of bot names from /bots
+
+    function setApiStatus(isOk, text) {
+      apiStatus.textContent = "";
+      const dot = document.createElement("span");
+      dot.className = "w-2 h-2 rounded-full " + (isOk ? "bg-emerald-400" : "bg-rose-500");
+      const label = document.createElement("span");
+      label.textContent = text;
+
+      apiStatus.className =
+        "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs " +
+        (isOk
+          ? "bg-emerald-950/40 border-emerald-500/70 text-emerald-200"
+          : "bg-rose-950/40 border-rose-500/80 text-rose-200");
+
+      apiStatus.appendChild(dot);
+      apiStatus.appendChild(label);
+    }
+
+    function makeIds(name) {
+      const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+      return {
+        card: `card-${safe}`,
+        status: `status-${safe}`,
+        metrics: `metrics-${safe}`,
+        chip: `chip-${safe}`,
+        refreshIcon: `refresh-${safe}`,
+      };
+    }
+
+    function createBotCard(bot) {
+      const ids = makeIds(bot.name);
+
+      const card = document.createElement("div");
+      card.id = ids.card;
+      card.className = "card rounded-2xl p-5 flex flex-col gap-4";
+
+      card.innerHTML = `
+        <div class="flex items-center justify-between gap-3">
+          <div class="text-left">
+            <div class="text-[11px] uppercase tracking-[0.2em] text-sky-400/75">Bot</div>
+            <div class="text-lg sm:text-xl font-semibold text-sky-100">${bot.name}</div>
+            <div class="text-[11px] text-slate-400">
+              PM2: <span class="font-mono text-sky-300">${bot.pm2_name}</span>
+            </div>
+          </div>
+          <span
+            id="${ids.chip}"
+            class="inline-flex items-center px-3 py-1 text-[11px] rounded-full border border-slate-600 bg-slate-900/80 text-slate-300"
+          >
+            <span class="w-2 h-2 rounded-full bg-yellow-400 mr-1"></span>
+            Checking…
+          </span>
+        </div>
+
+        <div class="flex flex-col gap-2 text-xs sm:text-sm">
+          <div id="${ids.status}" class="font-medium text-slate-200">
+            Status: —
+          </div>
+          <div id="${ids.metrics}" class="text-[11px] sm:text-xs text-slate-400">
+            CPU: -- | RAM: -- | Uptime: --
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 mt-3">
+          <div class="flex gap-2 flex-wrap">
+            <button
+              class="btn px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-[11px] sm:text-xs font-semibold"
+              data-action="start"
+              data-bot="${bot.name}"
+            >
+              Start
+            </button>
+            <button
+              class="btn px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-[11px] sm:text-xs font-semibold"
+              data-action="stop"
+              data-bot="${bot.name}"
+            >
+              Stop
+            </button>
+            <button
+              class="btn px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-[11px] sm:text-xs font-semibold text-slate-900"
+              data-action="restart"
+              data-bot="${bot.name}"
+            >
+              Restart
+            </button>
+          </div>
+          <button
+            class="btn text-[11px] sm:text-xs text-sky-300 hover:text-sky-100 flex items-center gap-1"
+            data-refresh="${bot.name}"
+          >
+            <span id="${ids.refreshIcon}">⟳</span>
+            Refresh
+          </button>
+        </div>
+      `;
+
+      // attach button handlers specifically for this card
+      const buttons = card.querySelectorAll("button[data-action]");
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const action = btn.dataset.action;
+          controlBot(bot.name, action);
         });
-        const data = await res.json();
-        document.getElementById("status").innerText =
-          `Status: ${action.toUpperCase()} (code: ${data.pm2?.returncode ?? "?"})`;
-        console.log(data);
+      });
+
+      const refreshBtn = card.querySelector("button[data-refresh]");
+      refreshBtn.addEventListener("click", () => {
+        updateBotStatus(bot.name);
+      });
+
+      botsContainer.appendChild(card);
+    }
+
+    async function fetchJSON(url, options = {}) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    async function loadBots() {
+      try {
+        const data = await fetchJSON(`${API_BASE}/bots`);
+        const bots = data.bots || [];
+        botNames = bots.map((b) => b.name);
+
+        botsContainer.innerHTML = "";
+
+        if (!bots.length) {
+          botsContainer.innerHTML =
+            '<div class="col-span-full text-center text-sm text-slate-400">No bots configured.</div>';
+          setApiStatus(true, "API OK · 0 bots");
+          return;
+        }
+
+        bots.forEach(createBotCard);
+        bots.forEach((b) => updateBotStatus(b.name));
+
+        setApiStatus(true, `API OK · ${bots.length} bot${bots.length > 1 ? "s" : ""}`);
       } catch (err) {
-        console.error(err);
-        document.getElementById("status").innerText =
-          "Status: error talking to API";
+        console.error("Error loading /bots:", err);
+        botsContainer.innerHTML =
+          '<div class="col-span-full text-center text-sm text-rose-400">Unable to reach API.</div>';
+        setApiStatus(false, "API ERROR");
       }
     }
-  </script>
 
-<script>
-async function checkStatus() {
-    document.getElementById("status").innerText = "Status: Checking...";
+    async function controlBot(name, action) {
+      const ids = makeIds(name);
+      const statusEl = document.getElementById(ids.status);
+      if (!statusEl) return;
 
-    try {
-        const response = await fetch(`${API_BASE}/bots/status/cyberbot`, {
-            method: "GET"
+      statusEl.textContent = `Status: ${action.toUpperCase()}…`;
+
+      try {
+        const data = await fetchJSON(`${API_BASE}/bots/${action}/${name}`, {
+          method: "POST",
         });
-
-        const data = await response.json();
-
-        document.getElementById("status").innerText =
-            "Status: " + data.status.toUpperCase();
-
-    } catch (err) {
-        document.getElementById("status").innerText =
-            "Status: ERROR (Cannot reach API)";
+        const code = data.pm2?.returncode ?? "?";
+        statusEl.textContent = `Status: ${action.toUpperCase()} (code: ${code})`;
+        // refresh status after action
+        await updateBotStatus(name);
+      } catch (err) {
+        console.error(`Error during ${action} for ${name}:`, err);
+        statusEl.textContent = "Status: ERROR (Cannot reach API)";
+      }
     }
-}
-</script>
 
+    async function updateBotStatus(name) {
+      const ids = makeIds(name);
+      const statusEl = document.getElementById(ids.status);
+      const metricsEl = document.getElementById(ids.metrics);
+      const chipEl = document.getElementById(ids.chip);
+      const refreshIcon = document.getElementById(ids.refreshIcon);
 
+      if (!statusEl || !metricsEl || !chipEl) return;
 
+      statusEl.textContent = "Status: Checking…";
+      if (refreshIcon) refreshIcon.classList.add("spin");
+
+      try {
+        const data = await fetchJSON(`${API_BASE}/bots/status/${name}`);
+        console.log("Status", name, data);
+
+        if (data.error) {
+          statusEl.textContent = `Status: ERROR (${data.error})`;
+          metricsEl.textContent = "CPU: -- | RAM: -- | Uptime: --";
+          chipEl.className =
+            "inline-flex items-center px-3 py-1 text-[11px] rounded-full border border-rose-500/80 bg-rose-950/40 text-rose-200";
+          chipEl.innerHTML =
+            '<span class="w-2 h-2 rounded-full bg-rose-500 mr-1"></span>Error';
+          return;
+        }
+
+        const online = !!data.online;
+        const cpu = data.cpu ?? "--";
+        const mem = data.memory_mb ?? "--";
+        const up = data.uptime_human ?? "--";
+
+        statusEl.textContent = `Status: ${online ? "ONLINE" : "OFFLINE"}`;
+        metricsEl.textContent = `CPU: ${cpu}% | RAM: ${mem} MB | Uptime: ${up}`;
+
+        if (online) {
+          chipEl.className =
+            "inline-flex items-center px-3 py-1 text-[11px] rounded-full border border-emerald-500/80 bg-emerald-950/40 text-emerald-200";
+          chipEl.innerHTML =
+            '<span class="w-2 h-2 rounded-full bg-emerald-400 mr-1"></span>Online';
+        } else {
+          chipEl.className =
+            "inline-flex items-center px-3 py-1 text-[11px] rounded-full border border-slate-500/70 bg-slate-900/80 text-slate-200";
+          chipEl.innerHTML =
+            '<span class="w-2 h-2 rounded-full bg-slate-400 mr-1"></span>Offline';
+        }
+      } catch (err) {
+        console.error("Error loading status for", name, err);
+        statusEl.textContent = "Status: ERROR (Cannot reach API)";
+        metricsEl.textContent = "CPU: -- | RAM: -- | Uptime: --";
+        chipEl.className =
+          "inline-flex items-center px-3 py-1 text-[11px] rounded-full border border-rose-500/80 bg-rose-950/40 text-rose-200";
+        chipEl.innerHTML =
+          '<span class="w-2 h-2 rounded-full bg-rose-500 mr-1"></span>Error';
+      } finally {
+        if (refreshIcon) refreshIcon.classList.remove("spin");
+      }
+    }
+
+    // Refresh all
+    refreshAllBtn.addEventListener("click", async () => {
+      refreshAllIcon.classList.add("spin");
+      await Promise.all(botNames.map((name) => updateBotStatus(name)));
+      refreshAllIcon.classList.remove("spin");
+    });
+
+    // Initial load
+    (async () => {
+      setApiStatus(false, "Checking API…");
+      await loadBots();
+    })();
+  </script>
 </body>
 </html>
