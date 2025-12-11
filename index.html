@@ -90,22 +90,28 @@
   </div>
 
   <script>
-    // 🔧 CHANGE THIS WHEN YOUR NGROK URL CHANGES
+    // === CONFIG: set your current public tunnel URL here ===
     const API_BASE = "https://burl-birdlike-verda.ngrok-free.dev";
+
+    // quick sanity
+    if (!API_BASE || API_BASE.includes("localhost")) {
+      console.warn("API_BASE looks unusual — make sure it points to your public ngrok URL.");
+    }
 
     const botsContainer = document.getElementById("botsContainer");
     const apiStatus = document.getElementById("apiStatus");
     const refreshAllBtn = document.getElementById("refreshAllBtn");
     const refreshAllIcon = document.getElementById("refreshAllIcon");
 
-    let botNames = []; // list of bot names from /bots
+    let botNames = [];
 
     function setApiStatus(isOk, text) {
-      apiStatus.textContent = "";
+      // replace contents cleanly
+      apiStatus.innerHTML = "";
       const dot = document.createElement("span");
       dot.className = "w-2 h-2 rounded-full " + (isOk ? "bg-emerald-400" : "bg-rose-500");
       const label = document.createElement("span");
-      label.textContent = text;
+      label.textContent = text || (isOk ? "API OK" : "API ERROR");
 
       apiStatus.className =
         "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs " +
@@ -196,7 +202,7 @@
         </div>
       `;
 
-      // attach button handlers specifically for this card
+      // attach handlers
       const buttons = card.querySelectorAll("button[data-action]");
       buttons.forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -206,22 +212,34 @@
       });
 
       const refreshBtn = card.querySelector("button[data-refresh]");
-      refreshBtn.addEventListener("click", () => {
-        updateBotStatus(bot.name);
-      });
+      if (refreshBtn) refreshBtn.addEventListener("click", () => updateBotStatus(bot.name));
 
       botsContainer.appendChild(card);
     }
 
+    // improved fetch helper that returns useful error text
     async function fetchJSON(url, options = {}) {
       const res = await fetch(url, options);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (err) {
+        // not JSON — throw with response body for debugging
+        throw new Error(`HTTP ${res.status} - ${text}`);
       }
-      return res.json();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} - ${JSON.stringify(data)}`);
+      }
+      return data;
     }
 
     async function loadBots() {
+      if (!botsContainer) {
+        console.error("Bots container missing from DOM");
+        return;
+      }
+
       try {
         const data = await fetchJSON(`${API_BASE}/bots`);
         const bots = data.bots || [];
@@ -237,14 +255,15 @@
         }
 
         bots.forEach(createBotCard);
-        bots.forEach((b) => updateBotStatus(b.name));
+        // initial status load (parallel)
+        await Promise.all(bots.map((b) => updateBotStatus(b.name)));
 
         setApiStatus(true, `API OK · ${bots.length} bot${bots.length > 1 ? "s" : ""}`);
       } catch (err) {
         console.error("Error loading /bots:", err);
         botsContainer.innerHTML =
           '<div class="col-span-full text-center text-sm text-rose-400">Unable to reach API.</div>';
-        setApiStatus(false, "API ERROR");
+        setApiStatus(false, `API ERROR: ${err.message}`);
       }
     }
 
@@ -259,13 +278,12 @@
         const data = await fetchJSON(`${API_BASE}/bots/${action}/${name}`, {
           method: "POST",
         });
-        const code = data.pm2?.returncode ?? "?";
+        const code = (data.pm2 && data.pm2.returncode) ?? "?";
         statusEl.textContent = `Status: ${action.toUpperCase()} (code: ${code})`;
-        // refresh status after action
         await updateBotStatus(name);
       } catch (err) {
         console.error(`Error during ${action} for ${name}:`, err);
-        statusEl.textContent = "Status: ERROR (Cannot reach API)";
+        statusEl.textContent = `Status: ERROR (${err.message})`;
       }
     }
 
@@ -316,7 +334,7 @@
         }
       } catch (err) {
         console.error("Error loading status for", name, err);
-        statusEl.textContent = "Status: ERROR (Cannot reach API)";
+        statusEl.textContent = `Status: ERROR (${err.message})`;
         metricsEl.textContent = "CPU: -- | RAM: -- | Uptime: --";
         chipEl.className =
           "inline-flex items-center px-3 py-1 text-[11px] rounded-full border border-rose-500/80 bg-rose-950/40 text-rose-200";
@@ -327,14 +345,19 @@
       }
     }
 
-    // Refresh all
-    refreshAllBtn.addEventListener("click", async () => {
-      refreshAllIcon.classList.add("spin");
-      await Promise.all(botNames.map((name) => updateBotStatus(name)));
-      refreshAllIcon.classList.remove("spin");
-    });
+    // Refresh all guard
+    if (refreshAllBtn) {
+      refreshAllBtn.addEventListener("click", async () => {
+        if (!botNames.length) return;
+        refreshAllIcon.classList.add("spin");
+        await Promise.all(botNames.map((name) => updateBotStatus(name)));
+        refreshAllIcon.classList.remove("spin");
+      });
+    } else {
+      console.warn("refreshAllBtn missing from DOM");
+    }
 
-    // Initial load
+    // initial load
     (async () => {
       setApiStatus(false, "Checking API…");
       await loadBots();
